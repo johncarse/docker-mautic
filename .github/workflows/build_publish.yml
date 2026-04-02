@@ -135,7 +135,7 @@ jobs:
           github-pat: ${{ secrets.GITHUB_TOKEN }}
 
   build-and-push-image:
-    runs-on: ubuntu-latest
+    runs-on: arc-runners
     strategy:
       matrix:
         image_type: [apache, fpm]
