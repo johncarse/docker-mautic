@@ -17,7 +17,7 @@ RUN apt-get update \
     unzip \
     && curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
     && apt-get install -y nodejs \
-    && npm install -g npm@latest
+    && npm install -g npm@10
 
 # PHP extensions install script
 ARG IPE_VERSION=2.9.28
@@ -100,6 +100,11 @@ COPY --from=builder --chmod=755 /common/entrypoint_mautic_worker.sh /entrypoint_
 # Copy supervisord configuration for workers
 COPY --from=builder /common/templates/supervisord.conf /etc/supervisor/conf.d/supervisord.conf
 
+# Overlay custom patches (from johncarse/mautic 7.x-custom branch)
+COPY --chown=www-data:www-data patches/PRedisConnectionHelper.php /var/www/html/docroot/app/bundles/CoreBundle/Helper/PRedisConnectionHelper.php
+COPY --chown=www-data:www-data patches/ContactFinder.php /var/www/html/docroot/app/bundles/EmailBundle/MonitoredEmail/Search/ContactFinder.php
+COPY --chown=www-data:www-data patches/FormApiController.php /var/www/html/docroot/app/bundles/FormBundle/Controller/Api/FormApiController.php
+
 # Install composer
 COPY --from=builder /usr/bin/composer /usr/bin/composer
 
@@ -132,7 +137,7 @@ RUN apt-get update \
 # Install Node.JS
 RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - && \
     apt-get install -y nodejs && \
-    npm install -g npm@latest
+    npm install -g npm@10
 
 # Rebuild web assets
 RUN cd /var/www/html && \
