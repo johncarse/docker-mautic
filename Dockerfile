@@ -113,6 +113,10 @@ COPY --chown=www-data:www-data patches/PublicController.php /var/www/html/docroo
 # Install composer
 COPY --from=builder /usr/bin/composer /usr/bin/composer
 
+# Switch apt sources to HTTPS (HTTP blocked by cluster firewall)
+RUN sed -i 's|http://|https://|g' /etc/apt/sources.list.d/*.sources 2>/dev/null; \
+    sed -i 's|http://|https://|g' /etc/apt/sources.list 2>/dev/null; true
+
 # Install PHP extensions requirements and other dependencies
 RUN apt-get update \
     && apt-get upgrade -y \
