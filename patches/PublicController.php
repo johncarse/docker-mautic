@@ -14,6 +14,7 @@ use Mautic\CoreBundle\Security\Permissions\CorePermissions;
 use Mautic\CoreBundle\Twig\Helper\AnalyticsHelper;
 use Mautic\CoreBundle\Twig\Helper\AssetsHelper;
 use Mautic\LeadBundle\Entity\Lead;
+use Mautic\LeadBundle\Entity\LeadDeviceRepository;
 use Mautic\LeadBundle\Helper\ContactRequestHelper;
 use Mautic\LeadBundle\Helper\PrimaryCompanyHelper;
 use Mautic\LeadBundle\Helper\TokenHelper;
@@ -465,6 +466,7 @@ class PublicController extends AbstractFormController
         RedirectModel $redirectModel,
         PageModel $pageModel,
         DeviceTrackingServiceInterface $deviceTrackingService,
+        LeadDeviceRepository $leadDeviceRepository,
         $redirectId,
     ): RedirectResponse {
         $logger->debug('Attempting to load redirect with tracking_id of: '.$redirectId);
@@ -546,7 +548,17 @@ class PublicController extends AbstractFormController
         // mtc.js on the landing page can identify this contact via the URL parameter.
         // Without this, the mautic_device_id cookie (set on the Mautic domain) is
         // invisible to JS on the destination domain.
+        //
+        // Try getTrackedDevice() first (populated by hitPage→trackCurrentDevice).
+        // If null (cookie not readable on this request), fall back to the most
+        // recent device for this lead from the database.
         $trackedDevice = $deviceTrackingService->getTrackedDevice();
+        if (null === $trackedDevice && isset($lead)) {
+            $trackedDevice = $leadDeviceRepository->findOneBy(
+                ['lead' => $lead],
+                ['dateAdded' => 'DESC']
+            );
+        }
         if ($trackedDevice) {
             $url = UrlHelper::appendQueryToUrl($url, 'mautic_device_id='.$trackedDevice->getTrackingId());
         }
