@@ -6,6 +6,10 @@ FROM php:${BASE_TAG} AS builder
 # Copy everything from common for building
 COPY ./common/ /common/
 
+# Switch apt sources to HTTPS (HTTP blocked by cluster firewall)
+RUN sed -i 's|http://|https://|g' /etc/apt/sources.list.d/*.sources 2>/dev/null; \
+    sed -i 's|http://|https://|g' /etc/apt/sources.list 2>/dev/null; true
+
 # Install dependencies
 RUN apt-get update \
     && apt-get upgrade -y \
