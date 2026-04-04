@@ -100,13 +100,6 @@ COPY --from=builder --chmod=755 /common/entrypoint_mautic_worker.sh /entrypoint_
 # Copy supervisord configuration for workers
 COPY --from=builder /common/templates/supervisord.conf /etc/supervisor/conf.d/supervisord.conf
 
-# Overlay custom patches (from johncarse/mautic 7.x-custom branch)
-COPY --chown=www-data:www-data patches/PRedisConnectionHelper.php /var/www/html/docroot/app/bundles/CoreBundle/Helper/PRedisConnectionHelper.php
-COPY --chown=www-data:www-data patches/ContactFinder.php /var/www/html/docroot/app/bundles/EmailBundle/MonitoredEmail/Search/ContactFinder.php
-COPY --chown=www-data:www-data patches/FormApiController.php /var/www/html/docroot/app/bundles/FormBundle/Controller/Api/FormApiController.php
-COPY --chown=www-data:www-data patches/PublicController.php /var/www/html/docroot/app/bundles/PageBundle/Controller/PublicController.php
-COPY --chown=www-data:www-data patches/UrlTokenReplaceEvent.php /var/www/html/docroot/app/bundles/PageBundle/Event/UrlTokenReplaceEvent.php
-
 # Install composer
 COPY --from=builder /usr/bin/composer /usr/bin/composer
 
@@ -155,6 +148,16 @@ RUN if [ "$FLAVOUR" = "apache" ]; then \
 
 # Set correct ownership for Mautic var folder
 RUN chown -R www-data:www-data /var/www/html/var/
+
+# Overlay custom patches (from johncarse/mautic 7.x-custom branch)
+# IMPORTANT: Keep this after all heavy install layers (apt-get, npm, cache:clear)
+# so that patch-only changes don't invalidate the expensive cached layers above.
+COPY --chown=www-data:www-data patches/PRedisConnectionHelper.php /var/www/html/docroot/app/bundles/CoreBundle/Helper/PRedisConnectionHelper.php
+COPY --chown=www-data:www-data patches/BuilderSubscriber.php /var/www/html/docroot/app/bundles/EmailBundle/EventListener/BuilderSubscriber.php
+COPY --chown=www-data:www-data patches/ContactFinder.php /var/www/html/docroot/app/bundles/EmailBundle/MonitoredEmail/Search/ContactFinder.php
+COPY --chown=www-data:www-data patches/FormApiController.php /var/www/html/docroot/app/bundles/FormBundle/Controller/Api/FormApiController.php
+COPY --chown=www-data:www-data patches/PublicController.php /var/www/html/docroot/app/bundles/PageBundle/Controller/PublicController.php
+COPY --chown=www-data:www-data patches/UrlTokenReplaceEvent.php /var/www/html/docroot/app/bundles/PageBundle/Event/UrlTokenReplaceEvent.php
 
 WORKDIR /var/www/html/docroot
 
