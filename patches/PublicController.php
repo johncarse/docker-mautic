@@ -321,14 +321,18 @@ class PublicController extends AbstractFormController
      *
      * @throws FileNotFoundException
      */
-    public function previewAction(Request $request, PageConfig $pageConfig, CorePermissions $security, AnalyticsHelper $analyticsHelper, AssetsHelper $assetsHelper, ThemeHelper $themeHelper, PageModel $model, LeadModel $leadModel, int $id, ?string $objectType = null)
+    public function previewAction(Request $request, PageConfig $pageConfig, CorePermissions $security, AnalyticsHelper $analyticsHelper, AssetsHelper $assetsHelper, ThemeHelper $themeHelper, int $id, ?string $objectType = null)
     {
-        $page = $model->getEntity($id);
+        /** @var PageModel $model */
+        $model = $this->getModel('page');
+        $page  = $model->getEntity($id);
 
         if (!$page || !$page->getId()) {
             return $this->notFound();
         }
 
+        /** @var LeadModel $leadModel */
+        $leadModel = $this->getModel('lead');
         $contactId = (int) $request->query->get('contactId');
         if ($contactId) {
             $contact = $leadModel->getEntity($contactId);
@@ -582,8 +586,11 @@ class PublicController extends AbstractFormController
     /**
      * Track video views.
      */
-    public function hitVideoAction(Request $request, VideoModel $model): JsonResponse|Response
+    public function hitVideoAction(Request $request): JsonResponse|Response
     {
+        /** @var VideoModel $model */
+        $model = $this->getModel('page.video');
+
         // Only track XMLHttpRequests, because the hit should only come from there
         if ($request->isXmlHttpRequest()) {
             try {
