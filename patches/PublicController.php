@@ -401,8 +401,10 @@ class PublicController extends AbstractFormController
         return new Response($content);
     }
 
-    public function trackingImageAction(Request $request, PageModel $model): Response
+    public function trackingImageAction(Request $request): Response
     {
+        /** @var PageModel $model */
+        $model = $this->getModel('page');
         $model->hitPage(null, $request);
 
         return TrackingPixelHelper::getResponse($request);
@@ -416,7 +418,6 @@ class PublicController extends AbstractFormController
         DeviceTrackingServiceInterface $deviceTrackingService,
         TrackingHelper $trackingHelper,
         ContactTracker $contactTracker,
-        PageModel $model,
     ) {
         $notSuccessResponse = new JsonResponse(
             [
@@ -426,6 +427,9 @@ class PublicController extends AbstractFormController
         if (!$this->security->isAnonymous()) {
             return $notSuccessResponse;
         }
+
+        /** @var PageModel $model */
+        $model = $this->getModel('page');
 
         try {
             $model->hitPage(null, $request);
