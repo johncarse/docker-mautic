@@ -471,15 +471,13 @@ class PublicController extends AbstractFormController
         PrimaryCompanyHelper $primaryCompanyHelper,
         IpLookupHelper $ipLookupHelper,
         LoggerInterface $logger,
-        RedirectModel $redirectModel,
-        PageModel $pageModel,
-        DeviceTrackingServiceInterface $deviceTrackingService,
-        LeadDeviceRepository $leadDeviceRepository,
         $redirectId,
     ): RedirectResponse {
         $logger->debug('Attempting to load redirect with tracking_id of: '.$redirectId);
 
-        $redirect = $redirectModel->getRedirectById($redirectId);
+        /** @var RedirectModel $redirectModel */
+        $redirectModel = $this->getModel(RedirectModel::class);
+        $redirect      = $redirectModel->getRedirectById($redirectId);
 
         $logger->debug('Executing Redirect: '.$redirect);
 
@@ -517,6 +515,10 @@ class PublicController extends AbstractFormController
         if (null !== $ct && '' !== $ct) {
             if ($ipAddress->isTrackable()) {
                 // Search replace lead fields in the URL
+
+                /** @var PageModel $pageModel */
+                $pageModel = $this->getModel(PageModel::class);
+
                 try {
                     $lead           = $contactRequestHelper->getContactFromQuery(['ct' => $ct]);
                     $isHitTrackable = $pageModel->hitPage($redirect, $request, 200, $lead);
@@ -560,9 +562,11 @@ class PublicController extends AbstractFormController
         // Try getTrackedDevice() first (populated by hitPage→trackCurrentDevice).
         // If null (cookie not readable on this request), fall back to the most
         // recent device for this lead from the database.
-        $trackedDevice = $deviceTrackingService->getTrackedDevice();
-        if (null === $trackedDevice && isset($lead)) {
-            $trackedDevice = $leadDeviceRepository->findOneBy(
+        $trackedDevice = null;
+        if (isset($lead)) {
+            /** @var LeadDeviceRepository $leadDeviceRepository */
+            $leadDeviceRepository = $this->doctrine->getRepository(\Mautic\LeadBundle\Entity\LeadDevice::class);
+            $trackedDevice        = $leadDeviceRepository->findOneBy(
                 ['lead' => $lead],
                 ['dateAdded' => 'DESC']
             );
