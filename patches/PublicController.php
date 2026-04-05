@@ -14,6 +14,7 @@ use Mautic\CoreBundle\Security\Permissions\CorePermissions;
 use Mautic\CoreBundle\Twig\Helper\AnalyticsHelper;
 use Mautic\CoreBundle\Twig\Helper\AssetsHelper;
 use Mautic\LeadBundle\Entity\Lead;
+use Mautic\LeadBundle\Entity\LeadDevice;
 use Mautic\LeadBundle\Entity\LeadDeviceRepository;
 use Mautic\LeadBundle\Helper\ContactRequestHelper;
 use Mautic\LeadBundle\Helper\PrimaryCompanyHelper;
@@ -24,7 +25,6 @@ use Mautic\LeadBundle\Tracker\Service\DeviceTrackingService\DeviceTrackingServic
 use Mautic\PageBundle\Entity\Page;
 use Mautic\PageBundle\Event\PageDisplayEvent;
 use Mautic\PageBundle\Event\TrackingEvent;
-use Mautic\PageBundle\Event\UrlTokenReplaceEvent;
 use Mautic\PageBundle\Helper\PageConfig;
 use Mautic\PageBundle\Helper\TrackingHelper;
 use Mautic\PageBundle\Model\PageModel;
@@ -61,15 +61,17 @@ class PublicController extends AbstractFormController
         Tracking404Model $tracking404Model,
         RouterInterface $router,
         DeviceTrackingServiceInterface $deviceTrackingService,
-        PageModel $model,
         $slug)
     {
+        /** @var PageModel $model */
+        $model    = $this->getModel('page');
+        $security = $this->security;
         /** @var Page|bool $entity */
         $entity = $model->getEntityBySlugs($slug);
 
         // Do not hit preference center pages
         if (!empty($entity) && !$entity->getIsPreferenceCenter()) {
-            $userAccess = $this->security->hasEntityAccess('page:pages:viewown', 'page:pages:viewother', $entity->getCreatedBy());
+            $userAccess = $security->hasEntityAccess('page:pages:viewown', 'page:pages:viewother', $entity->getCreatedBy());
             $published  = $entity->isPublished();
 
             // Make sure the page is published or deny access if not
@@ -325,17 +327,18 @@ class PublicController extends AbstractFormController
     {
         /** @var PageModel $model */
         $model = $this->getModel('page');
-        $page  = $model->getEntity($id);
+        /** @var Page $page */
+        $page = $model->getEntity($id);
 
         if (!$page || !$page->getId()) {
             return $this->notFound();
         }
 
-        /** @var LeadModel $leadModel */
-        $leadModel = $this->getModel('lead');
         $contactId = (int) $request->query->get('contactId');
         if ($contactId) {
-            $contact = $leadModel->getEntity($contactId);
+            /** @var LeadModel $leadModel */
+            $leadModel = $this->getModel('lead.lead');
+            $contact   = $leadModel->getEntity($contactId);
         }
         $draftEnabled = $pageConfig->isDraftEnabled();
         $analytics    = $analyticsHelper->getCode();
@@ -405,7 +408,12 @@ class PublicController extends AbstractFormController
         return new Response($content);
     }
 
-    public function trackingImageAction(Request $request): Response
+    /**
+     * @return Response
+     *
+     * @throws \Exception
+     */
+    public function trackingImageAction(Request $request)
     {
         /** @var PageModel $model */
         $model = $this->getModel('page');
@@ -416,6 +424,8 @@ class PublicController extends AbstractFormController
 
     /**
      * @return JsonResponse
+     *
+     * @throws \Exception
      */
     public function trackingAction(
         Request $request,
@@ -534,15 +544,9 @@ class PublicController extends AbstractFormController
                     $isHitTrackable = $pageModel->hitPage($redirect, $request, 200, $lead);
                 }
 
-                if ($lead) {
-                    $leadArray = $primaryCompanyHelper->getProfileFieldsWithPrimaryCompany($lead);
-                    $url       = TokenHelper::findLeadTokens($url, $leadArray, true);
+                $leadArray = ($lead) ? $primaryCompanyHelper->getProfileFieldsWithPrimaryCompany($lead) : [];
 
-                    // Dispatch URL token replace event to allow modifications
-                    $urlEvent = new UrlTokenReplaceEvent($url, $lead, null);
-                    $this->dispatcher->dispatch($urlEvent);
-                    $url = $urlEvent->getContent();
-                }
+                $url = TokenHelper::findLeadTokens($url, $leadArray, true);
             }
 
             if (str_contains($url, $this->generateUrl('mautic_asset_download'))) {
@@ -558,14 +562,10 @@ class PublicController extends AbstractFormController
         // mtc.js on the landing page can identify this contact via the URL parameter.
         // Without this, the mautic_device_id cookie (set on the Mautic domain) is
         // invisible to JS on the destination domain.
-        //
-        // Try getTrackedDevice() first (populated by hitPage→trackCurrentDevice).
-        // If null (cookie not readable on this request), fall back to the most
-        // recent device for this lead from the database.
         $trackedDevice = null;
         if (isset($lead)) {
             /** @var LeadDeviceRepository $leadDeviceRepository */
-            $leadDeviceRepository = $this->doctrine->getRepository(\Mautic\LeadBundle\Entity\LeadDevice::class);
+            $leadDeviceRepository = $this->doctrine->getRepository(LeadDevice::class);
             $trackedDevice        = $leadDeviceRepository->findOneBy(
                 ['lead' => $lead],
                 ['dateAdded' => 'DESC']
@@ -592,11 +592,11 @@ class PublicController extends AbstractFormController
      */
     public function hitVideoAction(Request $request): JsonResponse|Response
     {
-        /** @var VideoModel $model */
-        $model = $this->getModel('page.video');
-
         // Only track XMLHttpRequests, because the hit should only come from there
         if ($request->isXmlHttpRequest()) {
+            /** @var VideoModel $model */
+            $model = $this->getModel('page.video');
+
             try {
                 $model->hitVideo($request);
             } catch (\Exception) {
