@@ -268,23 +268,28 @@ class CampaignApiController extends CommonApiController
                 }
             }
 
-            // If new events need to be added, build full event list and use setEvents()
+            // If new events need to be added, process only the new events through setEvents().
+            // Then manually set parent relationships to existing events.
             if (!empty($newEventData)) {
-                $allEvents = [];
-                foreach ($existingEvents as $event) {
-                    $allEvents[] = $this->eventToArray($event);
-                }
-                foreach ($newEventData as $newEvent) {
-                    $allEvents[] = $newEvent;
-                }
                 $canvasSettings = $parameters['canvasSettings'] ?? $entity->getCanvasSettings();
-                foreach ($newEventData as $newEvent) {
-                    $newId = $newEvent['id'] ?? null;
-                    if ($newId) {
-                        $canvasSettings = $this->extendCanvasForNewEvent($canvasSettings, $newId, array_column($allEvents, null, 'id'));
+                $newEvents = $this->model->setEvents($entity, $newEventData, $canvasSettings, $deletedEvents);
+
+                // Link new events to their existing parents (setEvents can't do this
+                // because existing parent events aren't in its events map)
+                foreach ($newEvents as $newEvent) {
+                    if ($newEvent instanceof Event) {
+                        foreach ($newEventData as $data) {
+                            $tempId = $data['id'] ?? null;
+                            if ($tempId && $newEvent->getTempId() === $tempId && !empty($data['parent'])) {
+                                $parentId = (int) $data['parent'];
+                                if (isset($existingById[$parentId])) {
+                                    $newEvent->setParent($existingById[$parentId]);
+                                    $existingById[$parentId]->addChild($newEvent);
+                                }
+                            }
+                        }
                     }
                 }
-                $this->model->setEvents($entity, $allEvents, $canvasSettings, $deletedEvents);
             }
         } elseif (isset($parameters['events']) && isset($parameters['canvasSettings'])) {
             // POST/PUT: original behavior — replace all events
