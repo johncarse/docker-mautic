@@ -234,37 +234,58 @@ class CampaignApiController extends CommonApiController
                 }
             }
         } elseif ('PATCH' === $method && isset($parameters['events'])) {
-            // PATCH with events: merge with existing events instead of replacing.
-            // Events with existing IDs are updated. Events with new_* IDs are added.
-            // Existing events not in the PATCH payload are preserved.
-            $mergedEvents = [];
-            foreach ($entity->getEvents() as $existingEvent) {
-                $mergedEvents[$existingEvent->getId()] = $this->eventToArray($existingEvent);
+            // PATCH with events: merge with existing events.
+            // Update existing event properties directly on the managed entities.
+            // New events (new_* IDs) go through setEvents() for full processing.
+            // Build a lookup map by real event ID (not collection key, which may be temp IDs like "new_1")
+            $existingById = [];
+            foreach ($entity->getEvents() as $event) {
+                if ($event->getId()) {
+                    $existingById[$event->getId()] = $event;
+                }
             }
+            $newEventData = [];
 
             foreach ($parameters['events'] as $eventData) {
                 $eventId = $eventData['id'] ?? null;
-                if ($eventId && isset($mergedEvents[$eventId])) {
-                    // Update existing event: merge provided fields over existing
-                    $mergedEvents[$eventId] = array_merge($mergedEvents[$eventId], $eventData);
-                } else {
-                    // New event (temp ID like new_1)
-                    $mergedEvents[$eventData['id'] ?? uniqid('new_')] = $eventData;
+                $lookupId = is_numeric($eventId) ? (int) $eventId : $eventId;
+                if ($lookupId && isset($existingById[$lookupId])) {
+                    // Update existing event entity directly
+                    $event = $existingById[$lookupId];
+                    foreach ($eventData as $f => $v) {
+                        if (in_array($f, ['id', 'parent', 'campaign'])) {
+                            continue;
+                        }
+                        $func = 'set'.ucfirst($f);
+                        if (method_exists($event, $func)) {
+                            $event->$func($v);
+                        }
+                    }
+                    // Explicitly persist the updated event so Doctrine tracks the change
+                    $this->doctrine->getManager()->persist($event);
+                } elseif ($eventId && is_string($eventId) && str_starts_with($eventId, 'new')) {
+                    $newEventData[] = $eventData;
                 }
             }
 
-            // Use existing canvasSettings if not provided, extending for new events
-            $canvasSettings = $parameters['canvasSettings'] ?? $entity->getCanvasSettings();
-            if (!isset($parameters['canvasSettings'])) {
-                // Add nodes/connections for any new events
-                foreach ($mergedEvents as $id => $eventData) {
-                    if (is_string($id) && str_starts_with($id, 'new')) {
-                        $canvasSettings = $this->extendCanvasForNewEvent($canvasSettings, $id, $mergedEvents);
+            // If new events need to be added, build full event list and use setEvents()
+            if (!empty($newEventData)) {
+                $allEvents = [];
+                foreach ($existingEvents as $event) {
+                    $allEvents[] = $this->eventToArray($event);
+                }
+                foreach ($newEventData as $newEvent) {
+                    $allEvents[] = $newEvent;
+                }
+                $canvasSettings = $parameters['canvasSettings'] ?? $entity->getCanvasSettings();
+                foreach ($newEventData as $newEvent) {
+                    $newId = $newEvent['id'] ?? null;
+                    if ($newId) {
+                        $canvasSettings = $this->extendCanvasForNewEvent($canvasSettings, $newId, array_column($allEvents, null, 'id'));
                     }
                 }
+                $this->model->setEvents($entity, $allEvents, $canvasSettings, $deletedEvents);
             }
-
-            $this->model->setEvents($entity, array_values($mergedEvents), $canvasSettings, $deletedEvents);
         } elseif (isset($parameters['events']) && isset($parameters['canvasSettings'])) {
             // POST/PUT: original behavior — replace all events
             $this->model->setEvents($entity, $parameters['events'], $parameters['canvasSettings'], $deletedEvents);
@@ -440,8 +461,10 @@ class CampaignApiController extends CommonApiController
             }
         }
 
-        // Remove the event
-        $this->eventModel->deleteEvents($events->toArray(), [$eventId]);
+        // Remove the event from the campaign and hard-delete it
+        $entity->removeEvent($targetEvent);
+        $this->doctrine->getManager()->remove($targetEvent);
+        $this->doctrine->getManager()->flush();
 
         // Update canvas settings to remove the deleted event
         $canvasSettings = $entity->getCanvasSettings();
