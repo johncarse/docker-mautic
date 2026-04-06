@@ -10,7 +10,7 @@ on:
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository_owner }}/mautic
-  MAUTIC_VERSION: "7.0.1"
+  MAUTIC_VERSION: "7.0.2"
 
 jobs:
   build:
