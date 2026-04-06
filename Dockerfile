@@ -157,6 +157,8 @@ COPY --chown=www-data:www-data patches/BuilderSubscriber.php /var/www/html/docro
 COPY --chown=www-data:www-data patches/ContactFinder.php /var/www/html/docroot/app/bundles/EmailBundle/MonitoredEmail/Search/ContactFinder.php
 COPY --chown=www-data:www-data patches/FormApiController.php /var/www/html/docroot/app/bundles/FormBundle/Controller/Api/FormApiController.php
 COPY --chown=www-data:www-data patches/PublicController.php /var/www/html/docroot/app/bundles/PageBundle/Controller/PublicController.php
+COPY --chown=www-data:www-data patches/CampaignApiController.php /var/www/html/docroot/app/bundles/CampaignBundle/Controller/Api/CampaignApiController.php
+COPY --chown=www-data:www-data patches/CampaignConfig.php /var/www/html/docroot/app/bundles/CampaignBundle/Config/config.php
 
 WORKDIR /var/www/html/docroot
 
