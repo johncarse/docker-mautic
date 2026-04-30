@@ -161,10 +161,15 @@ COPY --chown=www-data:www-data patches/CampaignApiController.php /var/www/html/d
 COPY --chown=www-data:www-data patches/CampaignConfig.php /var/www/html/docroot/app/bundles/CampaignBundle/Config/config.php
 COPY --chown=www-data:www-data patches/AssetTimelineIndex.html.twig /var/www/html/docroot/app/bundles/AssetBundle/Resources/views/SubscribedEvents/Timeline/index.html.twig
 
-# Clear Twig and Symfony caches AFTER patches so compiled templates regenerate
-# from the patched source on first request. Without this, cached compiled
-# templates from before the patch overlay would be served instead.
-RUN rm -rf /var/www/html/var/tmp/twig/* /var/www/html/var/cache/prod/* 2>/dev/null || true
+# Rebuild the Symfony cache at BUILD TIME (not runtime) so it includes the
+# patched routes, config, and templates. Building at runtime would pick up
+# the kube-probe HTTP request context and force HTTPS redirects, breaking
+# Kubernetes readiness probes. The build-time cache is generated in a
+# neutral context that respects local.php at runtime.
+RUN rm -rf /var/www/html/var/tmp/twig/* /var/www/html/var/cache/prod/* 2>/dev/null || true \
+    && cd /var/www/html \
+    && APP_ENV=prod php bin/console cache:warmup --no-interaction \
+    && chown -R www-data:www-data /var/www/html/var/
 
 WORKDIR /var/www/html/docroot
 
