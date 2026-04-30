@@ -161,6 +161,11 @@ COPY --chown=www-data:www-data patches/CampaignApiController.php /var/www/html/d
 COPY --chown=www-data:www-data patches/CampaignConfig.php /var/www/html/docroot/app/bundles/CampaignBundle/Config/config.php
 COPY --chown=www-data:www-data patches/AssetTimelineIndex.html.twig /var/www/html/docroot/app/bundles/AssetBundle/Resources/views/SubscribedEvents/Timeline/index.html.twig
 
+# Clear Twig and Symfony caches AFTER patches so compiled templates regenerate
+# from the patched source on first request. Without this, cached compiled
+# templates from before the patch overlay would be served instead.
+RUN rm -rf /var/www/html/var/tmp/twig/* /var/www/html/var/cache/prod/* 2>/dev/null || true
+
 WORKDIR /var/www/html/docroot
 
 ENTRYPOINT ["/entrypoint.sh"]
