@@ -117,7 +117,10 @@ final class PRedisConnectionHelper
         // Convert single-endpoint array to string to avoid Predis 3 aggregate connection error
         // This is to maintain compatibility with Predis 3 which expects a string for single endpoint
         // or an array of endpoints for multiple connections.
-        if (1 === count($endpoints) && is_string(reset($endpoints))) {
+        // FlowBridge patch: unwrap regardless of type — a single parsed-URL array
+        // endpoint must also be unwrapped or Predis throws "Array of connection
+        // parameters requires `cluster`, `replication` or `aggregate` client option".
+        if (1 === count($endpoints)) {
             $endpoints = reset($endpoints);
         }
 
