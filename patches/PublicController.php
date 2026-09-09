@@ -541,7 +541,9 @@ final class PublicController extends AbstractFormController
             $leadDeviceRepository = $this->doctrine->getRepository(LeadDevice::class);
             $trackedDevice        = $leadDeviceRepository->findOneBy(
                 ['lead' => $lead],
-                ['dateAdded' => 'DESC']
+                // id tie-break: the hit above may create the device within the
+                // same second as an older one; newest row must win.
+                ['dateAdded' => 'DESC', 'id' => 'DESC']
             );
         }
         if ($trackedDevice) {
