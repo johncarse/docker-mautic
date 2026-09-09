@@ -8,16 +8,19 @@ on:
     branches: [ "main-custom" ]
 
 env:
-  REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository_owner }}/mautic
+  # Images are delivered only to the local cluster — Zot is the system of
+  # record (no GHCR mirror by decision, 2026-09-08). amd64 only: every Mautic
+  # pod runs on amd64 nodes; the arm64-under-QEMU build was dropped with the
+  # move to in-cluster ARC runners.
+  REGISTRY: zot.internal.flowbridge.net
+  IMAGE_NAME: mautic
   MAUTIC_VERSION: "7.2.0"
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: docker-mautic-amd64
     permissions:
       contents: read
-      packages: write
       id-token: write
 
     outputs:
@@ -47,19 +50,20 @@ jobs:
         with:
           cosign-release: 'v2.2.4'
 
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
-
+      # network=host is required for buildkit-in-DinD on the ARC runners —
+      # without it the buildkit container cannot reach external networks.
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
+        with:
+          driver-opts: network=host
 
       - name: Log into registry ${{ env.REGISTRY }}
         if: github.event_name != 'pull_request'
         uses: docker/login-action@v3
         with:
           registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          username: ci
+          password: ${{ secrets.ZOT_PASSWORD }}
 
       - name: Extract Docker metadata
         id: meta
@@ -79,9 +83,11 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           build-args: MAUTIC_VERSION=${{ env.MAUTIC_VERSION }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-          platforms: linux/amd64,linux/arm64
+          # gha cache is useless from self-hosted runners; Zot holds the layer
+          # cache (same pattern as the aishell docker workflows).
+          cache-from: type=registry,ref=zot.internal.flowbridge.net/cache/mautic:amd64
+          cache-to: type=registry,ref=zot.internal.flowbridge.net/cache/mautic:amd64,mode=max,ignore-error=true
+          platforms: linux/amd64
 
       - name: Sign the published Docker image
         if: ${{ github.event_name != 'pull_request' }}

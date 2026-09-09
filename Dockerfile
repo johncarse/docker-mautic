@@ -6,6 +6,11 @@ FROM php:${BASE_TAG} AS builder
 # Copy everything from common for building
 COPY ./common/ /common/
 
+# Switch apt sources to HTTPS (cluster firewall blocks outbound port 80;
+# required when building on in-cluster ARC runners)
+RUN sed -i 's|http://|https://|g' /etc/apt/sources.list.d/*.sources 2>/dev/null; \
+    sed -i 's|http://|https://|g' /etc/apt/sources.list 2>/dev/null; true
+
 # Install dependencies
 RUN apt-get update \
     && apt-get upgrade -y \
@@ -104,6 +109,11 @@ COPY --from=builder /common/templates/supervisord.conf /etc/supervisor/conf.d/su
 COPY --from=builder /usr/bin/composer /usr/bin/composer
 
 # Install PHP extensions requirements and other dependencies
+# Switch apt sources to HTTPS (cluster firewall blocks outbound port 80;
+# required when building on in-cluster ARC runners)
+RUN sed -i 's|http://|https://|g' /etc/apt/sources.list.d/*.sources 2>/dev/null; \
+    sed -i 's|http://|https://|g' /etc/apt/sources.list 2>/dev/null; true
+
 RUN apt-get update \
     && apt-get upgrade -y \
     && apt-get install --no-install-recommends -y \
