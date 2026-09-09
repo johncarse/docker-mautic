@@ -14,6 +14,7 @@ use Mautic\CoreBundle\Translation\Translator;
 use Mautic\FormBundle\Entity\Action;
 use Mautic\FormBundle\Entity\Field;
 use Mautic\FormBundle\Entity\Form;
+use Mautic\FormBundle\Entity\FormRepository;
 use Mautic\FormBundle\Model\ActionModel;
 use Mautic\FormBundle\Model\FieldModel;
 use Mautic\FormBundle\Model\FormModel;
@@ -30,7 +31,7 @@ use Symfony\Component\Routing\RouterInterface;
 /**
  * @extends CommonApiController<Form>
  */
-class FormApiController extends CommonApiController
+final class FormApiController extends CommonApiController
 {
     /**
      * @var FormModel|null
@@ -49,10 +50,11 @@ class FormApiController extends CommonApiController
         ModelFactory $modelFactory,
         EventDispatcherInterface $dispatcher,
         CoreParametersHelper $coreParametersHelper,
+        private readonly FormModel $formModel,
+        private readonly FieldModel $fieldModel,
+        private readonly ActionModel $actionModel,
+        private readonly FormRepository $formRepository,
     ) {
-        $formModel = $modelFactory->getModel('form');
-        \assert($formModel instanceof FormModel);
-
         $this->model            = $formModel;
         $this->entityClass      = Form::class;
         $this->entityNameOne    = 'form';
@@ -69,10 +71,8 @@ class FormApiController extends CommonApiController
 
     /**
      * Delete fields from a form.
-     *
-     * @return Response
      */
-    public function deleteFieldsAction(Request $request, $formId)
+    public function deleteFieldsAction(Request $request, $formId): Response
     {
         if (!$this->security->isGranted(['form:forms:editown', 'form:forms:editother'], 'MATCH_ONE')) {
             return $this->accessDenied();
@@ -99,10 +99,8 @@ class FormApiController extends CommonApiController
 
     /**
      * Delete fields from a form.
-     *
-     * @return Response
      */
-    public function deleteActionsAction(Request $request, $formId)
+    public function deleteActionsAction(Request $request, $formId): Response
     {
         if (!$this->security->isGranted(['form:forms:editown', 'form:forms:editother'], 'MATCH_ONE')) {
             return $this->accessDenied();
@@ -127,12 +125,14 @@ class FormApiController extends CommonApiController
         return $this->handleView($view);
     }
 
+    /**
+     * @param Form                 $entity
+     * @param FormInterface<mixed> $form
+     * @param array<mixed>         $parameters
+     * @param string               $action
+     */
     protected function preSaveEntity(&$entity, $form, $parameters, $action = 'edit')
     {
-        $fieldModel = $this->getModel('form.field');
-        \assert($fieldModel instanceof FieldModel);
-        $actionModel = $this->getModel('form.action');
-        \assert($actionModel instanceof ActionModel);
         $method = $this->getCurrentRequest()->getMethod();
         $isNew  = false;
         $alias  = $entity->getAlias();
@@ -151,7 +151,7 @@ class FormApiController extends CommonApiController
 
             // Save the form first to get the form ID.
             // Using the repository function to not trigger the listeners twice.
-            $this->model->getRepository()->saveEntity($entity);
+            $this->formRepository->saveEntity($entity);
         }
 
         $formId             = $entity->getId();
@@ -169,15 +169,13 @@ class FormApiController extends CommonApiController
                 if (empty($fieldParams['id'])) {
                     // Create an unique ID if not set - the following code requires one
                     $fieldParams['id'] = 'new'.hash('sha1', uniqid(mt_rand()));
-                    /** @var ?Field $fieldEntity */
-                    $fieldEntity       = $fieldModel->getEntity();
+                    $fieldEntity       = $this->fieldModel->getEntity();
                 } else {
-                    /** @var ?Field $fieldEntity */
-                    $fieldEntity       = $fieldModel->getEntity($fieldParams['id']);
+                    $fieldEntity       = $this->fieldModel->getEntity($fieldParams['id']);
                     $requestFieldIds[] = $fieldParams['id'];
                 }
 
-                if (is_null($fieldEntity)) {
+                if (null === $fieldEntity) {
                     $msg = $this->translator->trans(
                         'mautic.core.error.entity.not.found',
                         [
@@ -195,7 +193,7 @@ class FormApiController extends CommonApiController
                 $fieldEntityArray['mappedObject'] = $fieldParams['mappedObject'] ?? null;
 
                 if (!empty($fieldParams['alias'])) {
-                    $fieldParams['alias'] = $fieldModel->cleanAlias($fieldParams['alias'], 'f_', 25);
+                    $fieldParams['alias'] = $this->fieldModel->cleanAlias($fieldParams['alias'], 'f_', 25);
 
                     if (!in_array($fieldParams['alias'], $aliases)) {
                         $fieldEntityArray['alias'] = $fieldParams['alias'];
@@ -203,7 +201,7 @@ class FormApiController extends CommonApiController
                 }
 
                 if (empty($fieldEntityArray['alias'])) {
-                    $fieldEntityArray['alias'] = $fieldParams['alias'] = $fieldModel->generateAlias($fieldEntityArray['label'] ?? '', $aliases);
+                    $fieldEntityArray['alias'] = $fieldParams['alias'] = $this->fieldModel->generateAlias($fieldEntityArray['label'] ?? '', $aliases);
                 }
 
                 // Check that the alias is not already in use by another field
@@ -211,9 +209,8 @@ class FormApiController extends CommonApiController
                     $msg = $this->translator->trans('mautic.form.field.alias.unique', ['%alias%' => $fieldEntityArray['alias']], 'validators');
 
                     return $this->returnError($msg, Response::HTTP_BAD_REQUEST);
-                } else {
-                    $requestUsedAliases[] = $fieldEntityArray['alias'];
                 }
+                $requestUsedAliases[] = $fieldEntityArray['alias'];
 
                 $fieldForm = $this->createFieldEntityForm($fieldEntityArray);
                 $fieldForm->submit($fieldParams, 'PATCH' !== $method);
@@ -239,7 +236,7 @@ class FormApiController extends CommonApiController
                 }
             }
 
-            if ($fieldsToDelete) {
+            if ([] !== $fieldsToDelete) {
                 $this->model->deleteFields($entity, $fieldsToDelete);
             }
         }
@@ -250,9 +247,9 @@ class FormApiController extends CommonApiController
             foreach ($parameters['actions'] as &$actionParams) {
                 if (empty($actionParams['id'])) {
                     $actionParams['id'] = 'new'.hash('sha1', uniqid(mt_rand()));
-                    $actionEntity       = $actionModel->getEntity();
+                    $actionEntity       = $this->actionModel->getEntity();
                 } else {
-                    $actionEntity       = $actionModel->getEntity($actionParams['id']);
+                    $actionEntity       = $this->actionModel->getEntity($actionParams['id']);
                     $requestActionIds[] = $actionParams['id'];
                 }
 
@@ -297,7 +294,7 @@ class FormApiController extends CommonApiController
 
             // Save the form first and new actions so that new fields are available to actions.
             // Using the repository function to not trigger the listeners twice.
-            $this->model->getRepository()->saveEntity($entity);
+            $this->formRepository->saveEntity($entity);
             $this->model->setActions($entity, $actions);
         }
 
@@ -311,7 +308,7 @@ class FormApiController extends CommonApiController
                 }
             }
 
-            if ($actionsToDelete) {
+            if ([] !== $actionsToDelete) {
                 $this->model->deleteActions($entity, $actionsToDelete);
             }
         }
@@ -322,17 +319,12 @@ class FormApiController extends CommonApiController
      *
      * @return FormInterface<mixed>
      */
-    protected function createActionEntityForm(Action $entity, array $action)
+    protected function createActionEntityForm(Action $entity, array $action): FormInterface
     {
-        /** @var FormModel $formModel */
-        $formModel  = $this->getModel('form');
-        $components = $formModel->getCustomComponents();
+        $components = $this->formModel->getCustomComponents();
         $type       = $action['type'] ?? $entity->getType();
 
-        $formActionModel = $this->getModel('form.action');
-        \assert($formActionModel instanceof ActionModel);
-
-        return $formActionModel->createForm(
+        return $this->actionModel->createForm(
             $entity,
             $this->formFactory,
             null,
@@ -349,12 +341,9 @@ class FormApiController extends CommonApiController
      *
      * @return FormInterface<mixed>
      */
-    protected function createFieldEntityForm($entity)
+    protected function createFieldEntityForm($entity): FormInterface
     {
-        $formFieldModel = $this->getModel('form.field');
-        \assert($formFieldModel instanceof FieldModel);
-
-        return $formFieldModel->createForm(
+        return $this->fieldModel->createForm(
             $entity,
             $this->formFactory,
             null,

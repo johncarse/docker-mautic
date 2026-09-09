@@ -159,7 +159,6 @@ COPY --chown=www-data:www-data patches/FormApiController.php /var/www/html/docro
 COPY --chown=www-data:www-data patches/PublicController.php /var/www/html/docroot/app/bundles/PageBundle/Controller/PublicController.php
 COPY --chown=www-data:www-data patches/CampaignApiController.php /var/www/html/docroot/app/bundles/CampaignBundle/Controller/Api/CampaignApiController.php
 COPY --chown=www-data:www-data patches/CampaignConfig.php /var/www/html/docroot/app/bundles/CampaignBundle/Config/config.php
-COPY --chown=www-data:www-data patches/AssetTimelineIndex.html.twig /var/www/html/docroot/app/bundles/AssetBundle/Resources/views/SubscribedEvents/Timeline/index.html.twig
 
 # Rebuild the Symfony cache at BUILD TIME (not runtime) so it includes the
 # patched routes, config, and templates. Building at runtime would pick up

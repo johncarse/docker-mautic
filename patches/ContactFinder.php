@@ -11,9 +11,9 @@ use Psr\Log\LoggerInterface;
 class ContactFinder
 {
     public function __construct(
-        private StatRepository $statRepository,
-        private LeadRepository $leadRepository,
-        private LoggerInterface $logger,
+        private readonly StatRepository $statRepository,
+        private readonly LeadRepository $leadRepository,
+        private readonly LoggerInterface $logger,
     ) {
     }
 
@@ -24,7 +24,7 @@ class ContactFinder
      */
     public function find($contactEmail, $returnPathEmail = null)
     {
-        $this->logger->debug("MONITORED EMAIL: Searching for a contact $contactEmail/$returnPathEmail");
+        $this->logger->debug("MONITORED EMAIL: Searching for a contact {$contactEmail}/{$returnPathEmail}");
 
         // We have a return path email so let's figure out who it originated to
         if ($returnPathEmail && $hash = Address::parseAddressForStatHash($returnPathEmail)) {
@@ -49,7 +49,7 @@ class ContactFinder
         /** @var Stat $stat */
         $stat = $this->statRepository->findOneBy(['trackingHash' => $hash]);
         if ($stat && $stat->getLead()) {
-            $this->logger->debug("MONITORED EMAIL: Stat ID {$stat->getId()} found for hash $hash");
+            $this->logger->debug("MONITORED EMAIL: Stat ID {$stat->getId()} found for hash {$hash}");
             $result->setStat($stat);
         } else {
             $this->logger->warning("MONITORED EMAIL: No stat found for hash $hash");

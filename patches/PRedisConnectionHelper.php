@@ -16,7 +16,7 @@ use Predis\Connection\Replication\SentinelReplication;
 /**
  * Helper functions for simpler operations with arrays.
  */
-class PRedisConnectionHelper
+final class PRedisConnectionHelper
 {
     /**
      * Transform the redis url config key into an array if needed
@@ -29,37 +29,36 @@ class PRedisConnectionHelper
         if (is_iterable($configuredUrls)) {
             // assume arrays are already in the correct format
             return $configuredUrls;
-        } else {
-            $parsed = parse_url($configuredUrls);
-            if (!$parsed) {
-                return [$configuredUrls];
-            }
-
-            // Convert parse_url() keys to Predis-expected keys.
-            // PHP's parse_url() returns 'user'/'pass' but Predis expects 'username'/'password'.
-            if (isset($parsed['user'])) {
-                $parsed['username'] = $parsed['user'];
-                unset($parsed['user']);
-            }
-            if (isset($parsed['pass'])) {
-                $parsed['password'] = $parsed['pass'];
-                unset($parsed['pass']);
-            }
-
-            // resolve hostnames ahead of time to support dns records with multiple ip addresses
-            // we need to provide each one to predis separately or it will just use a single one
-            $resolvedArray = gethostbynamel($parsed['host']);
-            if (!$resolvedArray) {
-                return [$configuredUrls];
-            } else {
-                // this will return an array of associative arrays which is supported by Predis
-                return array_map(function ($i) use ($parsed) {
-                    $parsed['host'] = $i;
-
-                    return $parsed;
-                }, $resolvedArray);
-            }
         }
+        $parsed = parse_url($configuredUrls);
+        if (!$parsed) {
+            return [$configuredUrls];
+        }
+
+        // Convert parse_url() keys to Predis-expected keys.
+        // PHP's parse_url() returns 'user'/'pass' but Predis expects 'username'/'password'.
+        if (isset($parsed['user'])) {
+            $parsed['username'] = $parsed['user'];
+            unset($parsed['user']);
+        }
+        if (isset($parsed['pass'])) {
+            $parsed['password'] = $parsed['pass'];
+            unset($parsed['pass']);
+        }
+
+        // resolve hostnames ahead of time to support dns records with multiple ip addresses
+        // we need to provide each one to predis separately or it will just use a single one
+        $resolvedArray = gethostbynamel($parsed['host']);
+        if (!$resolvedArray) {
+            return [$configuredUrls];
+        }
+
+        // this will return an array of associative arrays which is supported by Predis
+        return array_map(function ($i) use ($parsed): array {
+            $parsed['host'] = $i;
+
+            return $parsed;
+        }, $resolvedArray);
     }
 
     /**
@@ -118,7 +117,7 @@ class PRedisConnectionHelper
         // Convert single-endpoint array to string to avoid Predis 3 aggregate connection error
         // This is to maintain compatibility with Predis 3 which expects a string for single endpoint
         // or an array of endpoints for multiple connections.
-        if (1 === count($endpoints)) {
+        if (1 === count($endpoints) && is_string(reset($endpoints))) {
             $endpoints = reset($endpoints);
         }
 
