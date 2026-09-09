@@ -117,7 +117,7 @@ jobs:
           done
           docker run --rm --network host \
             -v "$PWD/probe:/probe:ro" \
-            -e PROBE_REDIS_URL=redis://localhost:6379 \
+            -e PROBE_REDIS_URL=redis://127.0.0.1:6379 \
             --entrypoint php \
             "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.prep.outputs.IMAGE_TAG }}" \
             /probe/redis-probe.php

@@ -16,7 +16,7 @@ require '/var/www/html/vendor/autoload.php';
 
 use Mautic\CoreBundle\Helper\PRedisConnectionHelper;
 
-$url = getenv('PROBE_REDIS_URL') ?: 'redis://localhost:6379';
+$url = getenv('PROBE_REDIS_URL') ?: 'redis://127.0.0.1:6379';
 
 $endpoints = PRedisConnectionHelper::getRedisEndpoints($url);
 $endpoints = is_array($endpoints) ? $endpoints : iterator_to_array($endpoints);
