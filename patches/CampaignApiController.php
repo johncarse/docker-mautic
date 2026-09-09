@@ -305,6 +305,31 @@ final class CampaignApiController extends CommonApiController
             if (!empty($newEventData)) {
                 $canvasSettings = $parameters['canvasSettings'] ?? $entity->getCanvasSettings();
 
+                // setEvents() also derives parent relationships from canvasSettings
+                // connections, and its events map only contains the new events — a
+                // connection sourced from an EXISTING event would hit an undefined
+                // key and transiently null the parent. Filter those connections out
+                // of the copy handed to setEvents() (full canvasSettings are still
+                // persisted for layout via setCanvasSettings later), and carry the
+                // linkage over to the manual re-link below via the parent field.
+                $canvasForModel = is_array($canvasSettings) ? $canvasSettings : [];
+                if (!empty($canvasForModel['connections'])) {
+                    $keptConnections = [];
+                    foreach ($canvasForModel['connections'] as $connection) {
+                        $sourceId = $connection['sourceId'] ?? null;
+                        if (is_numeric($sourceId) && isset($existingById[(int) $sourceId])) {
+                            foreach ($newEventData as $k => $data) {
+                                if (($data['id'] ?? null) === ($connection['targetId'] ?? null) && empty($data['parent'])) {
+                                    $newEventData[$k]['parent'] = (int) $sourceId;
+                                }
+                            }
+                            continue;
+                        }
+                        $keptConnections[] = $connection;
+                    }
+                    $canvasForModel['connections'] = $keptConnections;
+                }
+
                 // Strip parent refs that point at EXISTING events before setEvents():
                 // its events map only contains the new events, so a dangling ref
                 // emits "Undefined array key" and transiently nulls the parent.
@@ -317,7 +342,7 @@ final class CampaignApiController extends CommonApiController
                     }
                     $newEventDataForModel[] = $data;
                 }
-                $newEvents = $this->model->setEvents($entity, $newEventDataForModel, $canvasSettings, $deletedEvents);
+                $newEvents = $this->model->setEvents($entity, $newEventDataForModel, $canvasForModel, $deletedEvents);
 
                 // Link new events to their existing parents (setEvents can't do this
                 // because existing parent events aren't in its events map)
