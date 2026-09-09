@@ -159,7 +159,21 @@ RUN if [ "$FLAVOUR" = "apache" ]; then \
 # Set correct ownership for Mautic var folder
 RUN chown -R www-data:www-data /var/www/html/var/
 
-# Overlay custom patches (from johncarse/mautic 7.x-custom branch)
+# Guard: the patches/ overlays are whole-file snapshots cut from one specific
+# Mautic version. Overlaying them onto a different version silently reverts
+# upstream changes. scripts/sync-patches.sh regenerates them and stamps
+# patches/.base-version; this check fails the build on any mismatch.
+ARG MAUTIC_VERSION=7.x-dev
+COPY patches/.base-version /tmp/patches-base-version
+RUN base="$(cut -d' ' -f1 /tmp/patches-base-version)" \
+    && if [ "$base" != "${MAUTIC_VERSION}" ]; then \
+         echo "ERROR: patches generated for Mautic $base but MAUTIC_VERSION=${MAUTIC_VERSION}." >&2; \
+         echo "       Rebase the patch branch, then run scripts/sync-patches.sh." >&2; \
+         exit 1; \
+       fi \
+    && rm /tmp/patches-base-version
+
+# Overlay custom patches (from the johncarse/mautic *-custom patch branch)
 # IMPORTANT: Keep this after all heavy install layers (apt-get, npm, cache:clear)
 # so that patch-only changes don't invalidate the expensive cached layers above.
 COPY --chown=www-data:www-data patches/PRedisConnectionHelper.php /var/www/html/docroot/app/bundles/CoreBundle/Helper/PRedisConnectionHelper.php

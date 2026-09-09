@@ -30,6 +30,18 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      # Fail fast if the whole-file overlays were cut from a different Mautic
+      # version than we are about to build (they would silently revert
+      # upstream changes). scripts/sync-patches.sh regenerates them.
+      # The Dockerfile re-checks this at the overlay layer.
+      - name: Patch base-version guard
+        run: |
+          base="$(cut -d' ' -f1 patches/.base-version)"
+          if [ "$base" != "$MAUTIC_VERSION" ]; then
+            echo "::error::patches/ generated for Mautic $base but MAUTIC_VERSION=$MAUTIC_VERSION — rebase the patch branch and run scripts/sync-patches.sh"
+            exit 1
+          fi
+
       - name: Prepare
         id: prep
         run: |
@@ -74,19 +86,55 @@ jobs:
               ${{ steps.prep.outputs.IMAGE_TAG }}
               ${{ steps.prep.outputs.LATEST_TAG }}
 
-      - name: Build and push Docker image
-        id: build-and-push
+      # Stage 1: build and LOAD into the local daemon — nothing is pushed yet.
+      # The runtime probe below must pass before this image reaches Zot.
+      - name: Build image (no push)
         uses: docker/build-push-action@v6
         with:
           context: .
-          push: ${{ github.event_name != 'pull_request' }}
+          push: false
+          load: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           build-args: MAUTIC_VERSION=${{ env.MAUTIC_VERSION }}
-          # gha cache is useless from self-hosted runners; Zot holds the layer
-          # cache (same pattern as the aishell docker workflows).
+          # gha cache is unusable from self-hosted runners; Zot holds the
+          # layer cache (same pattern as the aishell docker workflows).
           cache-from: type=registry,ref=zot.internal.flowbridge.net/cache/mautic:amd64
           cache-to: type=registry,ref=zot.internal.flowbridge.net/cache/mautic:amd64,mode=max,ignore-error=true
+          platforms: linux/amd64
+          provenance: false
+
+      # Runtime probe: construct the Predis client through the patched
+      # PRedisConnectionHelper against a real Redis and ping it — the exact
+      # code path that 500ed all tracking endpoints on 2026-09-09 while
+      # cache:warmup stayed green. Fails the build before anything is pushed.
+      - name: Runtime probe — Redis helper in the built image
+        run: |
+          docker run -d --name probe-redis --network host redis:7-alpine
+          for i in $(seq 1 40); do
+            docker exec probe-redis redis-cli ping >/dev/null 2>&1 && break
+            sleep 0.5
+          done
+          docker run --rm --network host \
+            -v "$PWD/probe:/probe:ro" \
+            -e PROBE_REDIS_URL=redis://localhost:6379 \
+            --entrypoint php \
+            "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.prep.outputs.IMAGE_TAG }}" \
+            /probe/redis-probe.php
+          docker rm -f probe-redis
+
+      # Stage 2: push — a cache-hit rebuild of what was just probed.
+      - name: Push Docker image
+        id: build-and-push
+        if: github.event_name != 'pull_request'
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: MAUTIC_VERSION=${{ env.MAUTIC_VERSION }}
+          cache-from: type=registry,ref=zot.internal.flowbridge.net/cache/mautic:amd64
           platforms: linux/amd64
 
       - name: Sign the published Docker image
