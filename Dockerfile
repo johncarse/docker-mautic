@@ -46,6 +46,11 @@ ARG MAUTIC_VERSION=7.x-dev
 
 RUN cd /opt && \
     COMPOSER_ALLOW_SUPERUSER=1 COMPOSER_PROCESS_TIMEOUT=10000 composer create-project mautic/recommended-project:${MAUTIC_VERSION} mautic --no-interaction && \
+    # Mautic 7.2.0 packaging bug: EmailBundle's ValidEmailLinksValidator (prod
+    # code) uses Symfony DomCrawler, but symfony/dom-crawler is only a DEV
+    # dependency of mautic/core — absent from any create-project install, so
+    # saving ANY email containing links 500s. Pull it in explicitly.
+    COMPOSER_ALLOW_SUPERUSER=1 composer --working-dir=/opt/mautic require symfony/dom-crawler --no-interaction && \
     rm -rf /opt/mautic/var/cache/js && \
     find /opt/mautic/node_modules -mindepth 1 -maxdepth 1 -not \( -name 'jquery' -or -name 'vimeo-froogaloop2' \) | xargs rm -rf
 
